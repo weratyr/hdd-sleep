@@ -1,0 +1,9 @@
+*.class
+.DS_Store
+*.jar
+*.js
+.classpath
+.project
+.settings
+*.png
+*.jpg
