@@ -7,6 +7,7 @@ public class HddEntry implements Serializable {
 	String mountPoint;
 	String name;
 	int flag;
+	String[] command;
 
 	public HddEntry(int id, String uuidDevice, String uuidPartition, String mountPoint, String name) {
 		this.id = id;
@@ -63,6 +64,15 @@ public class HddEntry implements Serializable {
 	public void setFlag(int flag) {
 		this.flag = flag;
 	}
+
+	public String[] getCommand() {
+		return command;
+	}
+
+	public void setCommand(String[] command) {
+		this.command = command;
+	}
+
 
 
 

@@ -8,53 +8,86 @@ import java.awt.Insets;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
 import java.util.ArrayList;
 
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.Popup;
+import javax.swing.PopupFactory;
 import javax.swing.SwingUtilities;
-
-/* TODO
- * - create Device - List
- *  - Text file ->  UUID  mountpoint  checkboxname
- *  								UUID  mountpoint  checkboxname
- *  - Create Conainter for hdd devices from Text File
- *
- *
- *
- */
 
 @SuppressWarnings("serial")
 public class HddClient extends JFrame {
 
 	private final JPanel infoPanel = new JPanel();
 	private Socket socket;
-	private ArrayList<HddEntry> hddList;
 	private ArrayList<JCheckBox> checkboxList;
+	private final String[] cmdList = { "start", "stop", "status" };
+	private ArrayList<String> checkboxNames;
+	private String cmd;
+	int max_width, max_height;
+	Popup popup;
+	private ObjectOutputStream oos;
+	private ObjectInputStream ois;
 
 	public HddClient() {
+
 	}
-
+/**
+ * Load JFrame with delay
+ */
 	public void loadLater() {
-		SwingUtilities.invokeLater(new Runnable() {
 
+		SwingUtilities.invokeLater(new Runnable() {
 			@Override
 			public void run() {
+
 				Toolkit kit = getToolkit();
 				GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
 				GraphicsDevice[] gs = ge.getScreenDevices();
 				Insets in = kit.getScreenInsets(gs[0].getDefaultConfiguration());
 				Dimension d = kit.getScreenSize();
-				int max_width = (d.width - in.left - in.right);
-				int max_height = (d.height - in.top - in.bottom);
+				max_width = (d.width - in.left - in.right);
+				max_height = (d.height - in.top - in.bottom);
 				setLocation((max_width - getWidth()) / 2, (max_height - getHeight()) / 2);
+
+				// connect to server
+				connectToServer();
+				// read config
+				readObjektFromSocket();
+
+				addWindowListener(new WindowAdapter() {
+					@Override
+					public void windowClosing(WindowEvent event) {
+						System.out.println("exit application");
+						try {
+							ArrayList<String> element = new ArrayList<String>();
+							element.add("close");
+							ArrayList<ArrayList<String>> temp = new ArrayList<ArrayList<String>>();
+							temp.add(element);
+							oos.writeObject(temp);
+							oos.flush();
+							ois.close();
+							oos.close();
+							socket.close();
+							dispose();
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+
+					}
+				});
 
 				Container cp = getContentPane();
 				cp.setLayout(new BorderLayout());
@@ -63,8 +96,9 @@ public class HddClient extends JFrame {
 				start.addActionListener(new ActionListener() {
 					@Override
 					public void actionPerformed(ActionEvent e) {
-						connectToServer();
-						writeObjektToSocket(1);
+						// connectToServer();
+						cmd = cmdList[0];
+						writeObjektToSocket();
 						closeConnection();
 					}
 				});
@@ -73,8 +107,9 @@ public class HddClient extends JFrame {
 				stop.addActionListener(new ActionListener() {
 					@Override
 					public void actionPerformed(ActionEvent e) {
-						connectToServer();
-						writeObjektToSocket(0);
+						// connectToServer();
+						cmd = cmdList[1];
+						writeObjektToSocket();
 						closeConnection();
 					}
 				});
@@ -82,8 +117,9 @@ public class HddClient extends JFrame {
 				statusButton.addActionListener(new ActionListener() {
 					@Override
 					public void actionPerformed(ActionEvent e) {
-						connectToServer();
-						writeObjektToSocket(3);
+						// connectToServer();
+						cmd = cmdList[2];
+						writeObjektToSocket();
 						closeConnection();
 					}
 				});
@@ -93,19 +129,10 @@ public class HddClient extends JFrame {
 				JLabel status = new JLabel("<html><b>Status</b></html>");
 				infoPanel.add(status);
 
-				// generate dynamic checkboxes
-				hddList = new ArrayList<HddEntry>();
-				hddList.add(new HddEntry(1, "dksfa3942ksf-3234-5-", "de57a813-26d2-43d1-af3e-3267bd0237be",
-						"/mnt/1500gb", "Home/Apps"));
-				hddList.add(new HddEntry(2, "dksfa3942ksf-3234-5-", "b576c1ab-dd29-4241-ad6b-481be81efb05",
-						"/mnt/2000gb", "Filme 2TB"));
-				hddList.add(new HddEntry(3, "dksfa3942ksf-3234-5-", "7ca46770-072c-4948-8b6b-420e2ea256fe",
-						"/mnt/backup1500gb", "Backup HDD"));
-
 				checkboxList = new ArrayList<JCheckBox>();
 				JCheckBox tempCheckbox;
-				for (int i = 0; i < hddList.size(); i++) {
-					tempCheckbox = new JCheckBox(hddList.get(i).getName());
+				for (int i = 0; i < checkboxNames.size(); i++) {
+					tempCheckbox = new JCheckBox(checkboxNames.get(i));
 					infoPanel.add(tempCheckbox);
 					checkboxList.add(tempCheckbox);
 					// j.addItemListener(this);
@@ -122,54 +149,82 @@ public class HddClient extends JFrame {
 
 				setVisible(true);
 				setTitle("Monitor");
-				setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+				// setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 				pack();
 			}
 		});
 
 	}
 
-	public void writeObjektToSocket(int action) {
+	public void writeObjektToSocket() {
 		try {
-			ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
-			oos.writeObject(selectedHdds(action));
+			System.out.println("Client: write to Socket");
+			oos.writeObject(selectedHdds(cmd));
 			oos.flush();
 		} catch (IOException e1) {
 			e1.printStackTrace();
 		}
 	}
 
-	public ArrayList<HddEntry> selectedHdds(int action) {
-		ArrayList<HddEntry> selectedHddList = new ArrayList<HddEntry>();
+	public void readObjektFromSocket() {
+		try {
+			System.out.println("Client: read from Socket");
+			checkboxNames = (ArrayList<String>) ois.readObject();
+		} catch (Exception e1) {
+			e1.printStackTrace();
+		}
+	}
+
+	public ArrayList<ArrayList<String>> selectedHdds(String action) {
+		ArrayList<ArrayList<String>> selectedHddList = new ArrayList<ArrayList<String>>();
 		for (int i = 0; i < checkboxList.size(); i++) {
 			if (checkboxList.get(i).isSelected()) {
-				hddList.get(i).setFlag(action);
-				selectedHddList.add(hddList.get(i));
+				ArrayList<String> cmd = new ArrayList<String>();
+				cmd.add(checkboxNames.get(i));
+				cmd.add(action);
+				selectedHddList.add(cmd);
 			}
 		}
-		System.out.println(selectedHddList.size());
 		return selectedHddList;
 	}
 
 	public void connectToServer() {
 		String ip = "127.0.0.1"; // localhost
 		// String ip = "10.10.1.58";
-		// InetAddress ip;
 		try { // ip = InetAddress.getByName("weratyr.ath.cx");
 			int port = 8001;
 			socket = new Socket(ip, port); // verbindet sich mit Server
+			oos = new ObjectOutputStream(socket.getOutputStream());
+			ois = new ObjectInputStream(socket.getInputStream());
 			System.out.println("conneced");
 		} catch (Exception e) {
+			JPanel popupContainer = new JPanel();
+			popupContainer.add(new JLabel("Could not connect!!!"));
+			JButton reconn = new JButton("reconnect");
+			reconn.addActionListener(new ActionListener() {
+				@Override
+				public void actionPerformed(ActionEvent arg0) {
+					popup.hide();
+					connectToServer();
+					loadLater();
+				}
+			});
+			popupContainer.add(reconn);
+
+			PopupFactory factory = PopupFactory.getSharedInstance();
+			popup = factory.getPopup(this, popupContainer, ((max_width - getWidth()) / 2) + 50,
+					((max_height - getHeight()) / 2) + 55);
+			popup.show();
 			e.printStackTrace();
 		}
 	}
 
 	public void closeConnection() {
-		try {
-			socket.close();
-		} catch (IOException e1) {
-			e1.printStackTrace();
-		}
+		// try {
+		// socket.close();
+		// } catch (IOException e1) {
+		// e1.printStackTrace();
+		// }
 	}
 
 	public void setStatus(String msg) {
