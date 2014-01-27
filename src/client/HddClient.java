@@ -29,10 +29,12 @@ public class HddClient extends JFrame {
 	private ArrayList<HddEntry> hddList;
 	private final ArrayList<JCheckBox> checkBoxList = new ArrayList<JCheckBox>();
 	private ServerInterface server;
-	//private final String rmiServerURL = "//127.0.0.1/Server";
+	// private final String rmiServerURL = "//127.0.0.1/Server";
 	private final String rmiServerURL = "//10.10.1.58/Server";
+	private Thread thread;
 
 	public HddClient() {
+
 
 		boolean sync = true;
 		while (sync) {
@@ -50,7 +52,8 @@ public class HddClient extends JFrame {
 		}
 
 		Dimension dim = Toolkit.getDefaultToolkit().getScreenSize();
-		this.setLocation((dim.width)/2-this.getSize().width/2, (dim.height)/2-this.getSize().height/2);
+		this.setLocation((dim.width) / 2 - this.getSize().width / 2, (dim.height) / 2
+				- this.getSize().height / 2);
 		Container cp = getContentPane();
 		cp.setLayout(new BorderLayout());
 
@@ -58,20 +61,27 @@ public class HddClient extends JFrame {
 		start.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
-				try {
-					for (int i = 0; i < checkBoxList.size(); i++) {
-						if (checkBoxList.get(i).isSelected()) {
-							hddList.get(i).setState(1);
+				thread = new Thread(new Runnable() {
+					@Override
+					public void run() {
+						try {
+							for (int i = 0; i < checkBoxList.size(); i++) {
+								if (checkBoxList.get(i).isSelected()) {
+									hddList.get(i).setState(1);
+								}
+							}
+							server.setHddList(hddList);
+							server.update(true);
+
+						} catch (Exception ex) {
+							JOptionPane.showMessageDialog(null, "Server not available!! Restart this tool!!",
+									"Error", JOptionPane.ERROR_MESSAGE);
+							System.exit(0);
+							System.out.println("Server not available");
 						}
 					}
-					server.setHddList(hddList);
-					server.update(true);
-				} catch (Exception ex) {
-					 JOptionPane.showMessageDialog(null, "Server not available!! Restart this tool!!",
-								"Error", JOptionPane.ERROR_MESSAGE);
-					 System.exit(0);
-					System.out.println("Server not available");
-				}
+				});
+				thread.start();
 			}
 		});
 		cp.add(start, BorderLayout.EAST);
